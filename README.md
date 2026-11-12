@@ -1,76 +1,103 @@
 # impeller_gles_memory
 
-Minimal reproduction for investigating **graphics-memory growth with Impeller on OpenGL ES** on PowerVR GPUs. It was first seen on a Samsung Galaxy A04 (PowerVR Rogue GE8320), where Impeller falls back from Vulkan to GLES.
+An experiment on graphics memory under **Impeller on OpenGL ES** on a PowerVR GPU (Samsung Galaxy A04, PowerVR Rogue GE8320), compared with Skia. Everything needed to check it is here: the app, the measuring script, the raw data, the analysis and a lab notebook.
 
-## Observation that motivated this
+**Status (2026-11-12):** on this device, the driver's `Graphics` / `GL mtrack` counter grows linearly with both renderers, 4–6× faster with Impeller. The device's free memory does not follow it. So far the counter growth does not show a real leak. See [Results](#results).
 
-In a production Flutter 3.41.8 app, on a Galaxy A04:
+## Question
 
-| | Impeller (default) | Skia (`--no-enable-impeller`) |
+A production app showed `Graphics` memory growing with Impeller and not with Skia on this phone. Is this a real memory leak in Impeller's GLES backend?
+
+| Hypothesis | Prediction | Verdict so far |
 |---|---|---|
-| Graphics memory after several navigation rounds | 716 → 1237 MB (about +55 MB per round, not released at rest) | stable |
-| Frames over 16.7 ms while scrolling | 22–47 % | 1.6–5 % |
+| **H1:** Impeller on GLES leaks GPU memory. | The counter grows, and the device's `MemAvailable` falls with it until the app is killed. | Not supported: `MemAvailable` stays flat. |
+| **H2:** the counter reflects driver accounting, not resident memory. | The counter grows without bound, past physical RAM, while `MemAvailable` stays flat. | Supported. |
 
-The growth happened even on screens without image-heavy lists. This project tries to reproduce it with no app-specific code.
+## Setup
 
-Related upstream issues:
-- flutter/flutter#193009: GE8320 jank, closed without a reproduction.
-- #168788: scroll jank with Impeller on Android.
-- #179454 and #180347: the Impeller opt-out deprecation notice.
+| | |
+|---|---|
+| Device | Samsung Galaxy A04 (SM-A045M), Android 14, 3.7 GB RAM |
+| GPU | PowerVR Rogue GE8320, OpenGL ES 3.2, driver build 1.13@5776728. Impeller falls back from Vulkan to GLES. |
+| Flutter | 3.41.8 stable, `--profile` |
+| Renderers | Impeller (default) and Skia (`--no-enable-impeller`) |
+| Conditions | USB, screen on, nothing else in the foreground |
 
-## What the app does
+## Method
 
-The app runs "rounds" by itself. Each round does this on three screens:
-1. Push a screen with a list of cards. Each card has rounded corners, a shadow, clipping and an 800×600 PNG generated on the device.
-2. Scroll to the end and back, twice.
-3. Pop the screen.
+1. **The app** ([`lib/main.dart`](lib/main.dart)) runs 30 rounds by itself. Each round does this three times:
+   - push a list of 24 cards (rounded corners, shadow, `Clip.antiAlias`, an 800×600 PNG generated on the device);
+   - scroll to the end and back, twice;
+   - pop.
 
-After each round the app prints `IMPELLER_REPRO round=N` to logcat and pauses, so memory can be sampled.
+   After each round it prints `IMPELLER_REPRO round=N` and waits 4 s.
+2. **The measuring script** ([`tool/measure.ps1`](tool/measure.ps1)) runs the app and records one CSV row per round. Each row comes from `dumpsys meminfo <package>`, plus `MemAvailable` from `/proc/meminfo`.
+3. **The analysis** ([`tool/analyze.dart`](tool/analyze.dart)) works on the `Graphics` counter in three steps:
+   - **It undoes the wraparound.** The counter reads 0 between 2 and 4 GiB and starts over after 4 GiB, like a signed 32-bit byte count. The script rebuilds the cumulative value from that.
+   - **It fits a line** to the cumulative value against the round number.
+   - **It tests the wraparound assumption:** every reading of 0 must fall where the fitted line predicts the 2–4 GiB band.
 
 Scenarios (`--dart-define=SCENARIO=...`):
+- `images` is the default, with the same images every round. It is the only one measured so far.
+- `fresh`, `no_images` and `stack` isolate image allocation, images versus layers, and screens that are never popped.
 
-| Scenario | What it isolates |
-|---|---|
-| `images` (default) | Same images every round. Memory should reach a plateau. |
-| `fresh` | New images every round. Exercises texture allocation and release. |
-| `no_images` | Same layout with flat colors. Separates images from layers. |
-| `stack` | Screens are pushed and never popped, like a tab bar that stacks routes. |
+## Results
 
-Other defines:
-- `ROUNDS`: default 30; `0` means endless.
-- `PAUSE_MS`: default 4000.
+Output of `dart run tool/analyze.dart results/*.csv`, `images` scenario, 30 rounds each:
 
-## How to measure
+| Run | Renderer | Growth of `Graphics` (MB/round) | R² | Value at round 30 (reconstructed) | Zeros explained by the wrap | `MemAvailable`, round 0 → 30 (MB) | `MemAvailable` trend (MB/round) | Native heap (MB) |
+|---|---|---|---|---|---|---|---|---|
+| [20261111-225455](results/20261111-225455-impeller-images.csv) | Impeller | 397 | 0.994 | 12.6 GB | 14/15 | not recorded | — | 29–39 |
+| [20261111-232906](results/20261111-232906-skia-images.csv) | Skia | 91 | 0.998 | ~2.8 GB (reads 0) | 9/10 | 1658 → 1593 | +0.7 | 33–51 |
+| [20261112-081612](results/20261112-081612-impeller-images.csv) | Impeller | 590 | 1.000 | 17.5 GB | 12/14 | 1745 → 1637 | −0.8 | 26–39 |
 
-Connect one Android device over adb, then run:
+Findings:
+1. **Both renderers grow the counter linearly** (R² ≥ 0.99). Impeller grows it 4–6× faster than Skia.
+2. **The counter goes far past physical RAM:** 17.5 GB on a 3.7 GB phone. `MemAvailable` has no trend (under 1 MB per round), and the app was never killed. Whatever the counter tracks is not resident memory.
+3. **The wraparound explains the zeros.** In 35 of 39 cases, the fitted line puts a zero reading in the 2–4 GiB band. The other 4 are rounds the line places 21–71 MB below the 2 GiB edge, which is within the fit's error.
+
+## Limitations
+
+- **One device, one driver, one Flutter version, one scenario.** No Vulkan device has been measured as a control.
+- **The two Impeller runs differ** (397 vs 590 MB/round). Run-to-run variance is not characterized yet.
+- **Free memory was not recorded in the first Impeller run:** that column was added after it.
+- **`MemAvailable` is device-wide and noisy:** it swings about 150–190 MB within a run.
+  - It would hide a slow leak.
+  - It would not hide one of hundreds of MB per round, which is what the counter claims.
+- **Smoothness was not measured here.** The production app showed 22–47 % slow frames with Impeller against 2–5 % with Skia, but that is a separate question.
+
+## Reproduce
+
+Requirements: Flutter on `PATH`, `adb`, PowerShell 7, one Android device connected.
 
 ```powershell
-./tool/measure.ps1 -Renderer impeller -Scenario images -Rounds 30
-./tool/measure.ps1 -Renderer skia     -Scenario images -Rounds 30
+./tool/measure.ps1 -Renderer impeller -Scenario images   # ~26 min
+./tool/measure.ps1 -Renderer skia     -Scenario images
+dart run tool/analyze.dart results/*.csv
 ```
 
-Each run writes `results/<timestamp>-<renderer>-<scenario>.csv`.
-- **Header:** the device, the GPU and the Flutter version.
-- **One row per round,** taken from `dumpsys meminfo`: `TOTAL PSS`, `Graphics`, `GL mtrack`, `EGL mtrack` and `Native Heap`.
+To try another Flutter SDK, pass `-Flutter C:\path\to\flutter\bin\flutter.bat`.
 
-Runs use `--profile`, because `--no-enable-impeller` only applies to debug and profile builds.
+## Data and notebook
 
-A leak looks like this: `Graphics` and `GL mtrack` grow roughly linearly with the round number under Impeller, and flatten under Skia.
+- [`results/`](results/) has every run, unedited. Its [README](results/README.md) explains the columns.
+- [`NOTEBOOK.md`](NOTEBOOK.md) logs each run in date order: the commit used, anything that went wrong, and what changed in the method.
+- [`report/issue-draft.md`](report/issue-draft.md) is the draft of the upstream report.
 
-### Comparing Flutter versions
+## Next steps
 
-Use `-Flutter` to point at another SDK, so the same measurement runs on each version:
+- [ ] Run the `fresh`, `no_images` and `stack` scenarios.
+- [ ] Repeat the `images` scenario to measure run-to-run variance.
+- [ ] Repeat on Flutter 3.50.0.
+- [ ] Run a Vulkan device as a control.
+- [ ] Check per-process resident memory (`/proc/<pid>/status` VmRSS) and `dumpsys gpu`, not only device-wide `MemAvailable`.
+- [ ] Post upstream ([draft](report/issue-draft.md)).
 
-```powershell
-./tool/measure.ps1 -Renderer impeller -Flutter C:\sdk\flutter-3.50.0\bin\flutter.bat
-```
+## Related upstream issues
 
-## Plan
-
-- [ ] Reproduce on the Galaxy A04 with Flutter 3.41.8: Impeller vs Skia, all four scenarios.
-- [ ] Repeat with the latest stable (3.50.0). Several 3.44–3.47 changes touch GLES texture and fence cleanup, for example #187216, #183561 and #188313.
-- [ ] Compare against a Vulkan-capable device.
-- [ ] If it still reproduces on the latest stable, file an upstream issue with this project and the CSVs.
+- flutter/flutter#178264: GL mtrack growing to ~4 GB on Adreno and Xclipse. It is open.
+- flutter/flutter#195767: Impeller GLES raster about 2× slower than Skia on Mali-G31. It is open and P1.
+- flutter/flutter#193009: GE8320 jank with Impeller. It was closed without a reproduction.
 
 ## License
 

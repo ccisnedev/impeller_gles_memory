@@ -81,13 +81,17 @@ function Sample([int]$round) {
     Write-Host "round $round -> $row"
 }
 
+# Throwing is the only way to leave a pipeline fed by a native command, and
+# PowerShell rewraps the exception ("Program 'adb.exe' failed to run: end"),
+# so the normal end is recognized by a flag, not by the message.
+$script:finished = $false
 try {
     Invoke-Adb logcat -v brief 'flutter:I' '*:S' | ForEach-Object {
         if ($_ -match 'IMPELLER_REPRO round=(\d+)') { Sample ([int]$Matches[1]) }
-        if ($_ -match 'IMPELLER_REPRO end') { throw 'end' }
+        if ($_ -match 'IMPELLER_REPRO end') { $script:finished = $true; throw 'end' }
     }
 } catch {
-    if ($_.Exception.Message -ne 'end') { throw }
+    if (-not $script:finished) { throw }
 } finally {
     if (-not $run.HasExited) { Stop-Process -Id $run.Id -Force }
     # `flutter run` may have already dropped the device connection.

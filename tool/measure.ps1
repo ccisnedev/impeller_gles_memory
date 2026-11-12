@@ -51,7 +51,7 @@ $csv = Join-Path $root "results/$stamp-$Renderer-$Scenario.csv"
     "# device=$model android=$android",
     "# $gpu",
     "# $flutterVersion",
-    'round,time,total_pss_kb,graphics_kb,gl_mtrack_kb,egl_mtrack_kb,native_heap_kb,device_mem_available_kb'
+    'round,time,total_pss_kb,graphics_kb,gl_mtrack_kb,egl_mtrack_kb,native_heap_kb,device_mem_available_kb,process_rss_kb'
 ) | Set-Content $csv
 
 # `--no-enable-impeller` only applies to debug and profile builds, which is
@@ -75,7 +75,11 @@ function Sample([int]$round) {
         (Value 'EGL mtrack'), (Value 'Native Heap'),
         # Physical check: the memtrack counters above are reported by the GPU
         # driver and can wrap or overcount; MemAvailable is what the device has.
-        ((Invoke-Adb shell cat /proc/meminfo | Select-String '^MemAvailable:\s+(\d+)').Matches[0].Groups[1].Value)
+        ((Invoke-Adb shell cat /proc/meminfo | Select-String '^MemAvailable:\s+(\d+)').Matches[0].Groups[1].Value),
+        # Per-process check: resident pages of the app ("App Summary" line,
+        # "TOTAL PSS: n   TOTAL RSS: n   TOTAL SWAP PSS: n").
+        (& { $r = $m | Select-String 'TOTAL RSS:\s+(\d+)' | Select-Object -First 1
+             if ($r) { $r.Matches[0].Groups[1].Value } else { '' } })
     ) -join ','
     Add-Content $csv $row
     Write-Host "round $round -> $row"

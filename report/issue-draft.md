@@ -6,7 +6,7 @@
 
 **Before posting:**
 - [ ] Repeat on the latest stable (3.50.0).
-- [ ] Add per-process RSS, so the free-memory check is not only device-wide.
+- [ ] Add per-process RSS, so the free-memory check is not only device-wide (column added; needs new runs).
 - [x] Run at least one more scenario (`fresh`: same rate as `images`).
 - [ ] Update the numbers below from `tool/analyze.dart`.
 

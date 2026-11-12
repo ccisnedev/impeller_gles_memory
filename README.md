@@ -31,7 +31,7 @@ A production app showed `Graphics` memory growing with Impeller and not with Ski
    - pop.
 
    After each round it prints `IMPELLER_REPRO round=N` and waits 4 s.
-2. **The measuring script** ([`tool/measure.ps1`](tool/measure.ps1)) runs the app and records one CSV row per round. Each row comes from `dumpsys meminfo <package>`, plus `MemAvailable` from `/proc/meminfo`.
+2. **The measuring script** ([`tool/measure.ps1`](tool/measure.ps1)) runs the app and records one CSV row per round. Each row comes from `dumpsys meminfo <package>`, including the app's resident memory (`TOTAL RSS`), plus the device's `MemAvailable` from `/proc/meminfo`.
 3. **The analysis** ([`tool/analyze.dart`](tool/analyze.dart)) works on the `Graphics` counter in three steps:
    - **It undoes the wraparound.** The counter reads 0 between 2 and 4 GiB and starts over after 4 GiB, like a signed 32-bit byte count. The script rebuilds the cumulative value from that.
    - **It fits a line** to the cumulative value against the round number.
@@ -96,7 +96,8 @@ To try another Flutter SDK, pass `-Flutter C:\path\to\flutter\bin\flutter.bat`.
 - [ ] Repeat the `images` scenario to measure run-to-run variance (397 vs 590 MB/round so far).
 - [ ] Repeat on Flutter 3.50.0.
 - [ ] Run a Vulkan device as a control.
-- [ ] Check per-process resident memory (`/proc/<pid>/status` VmRSS) and `dumpsys gpu`, not only device-wide `MemAvailable`.
+- [ ] Measure per-process resident memory (`TOTAL RSS`, recorded since the column was added) on Impeller and Skia.
+- [ ] Check `dumpsys gpu` as a second view of GPU memory.
 - [ ] Post upstream ([draft](report/issue-draft.md)).
 
 ## Related upstream issues

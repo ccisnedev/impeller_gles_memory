@@ -34,9 +34,10 @@ void main(List<String> args) {
     '| run | flutter | rounds | graphics growth (MB/round) | R² | '
     'graphics at last round (GB, reconstructed) | hidden readings | '
     'hidden explained | MemAvailable first → last (MB) | MemAvailable trend (MB/round) | '
+    'process RSS first → last (MB) | process RSS trend (MB/round) | '
     'native heap (MB) |',
   );
-  print('|---|---|---|---|---|---|---|---|---|---|---|');
+  print('|---|---|---|---|---|---|---|---|---|---|---|---|---|');
   for (final path in args) {
     print(_row(path));
   }
@@ -89,18 +90,8 @@ String _row(String path) {
       .where((round) => (g.intercept + g.slope * round) % wrapKb >= wrapKb / 2)
       .length;
 
-  final mem = rows
-      .where((r) => (r['device_mem_available_kb'] ?? '').isNotEmpty)
-      .toList();
-  String memRange = 'not recorded', memTrend = 'not recorded';
-  if (mem.isNotEmpty) {
-    final mx = mem.map((r) => double.parse(r['round']!)).toList();
-    final my = mem
-        .map((r) => double.parse(r['device_mem_available_kb']!))
-        .toList();
-    memRange = '${_mb(my.first)} → ${_mb(my.last)}';
-    memTrend = (_fit(mx, my).slope / 1024).toStringAsFixed(1);
-  }
+  final (memRange, memTrend) = _trend(rows, 'device_mem_available_kb');
+  final (rssRange, rssTrend) = _trend(rows, 'process_rss_kb');
   final heap = rows
       .where((r) => int.parse(r['round']!) >= 1)
       .map((r) => double.parse(r['native_heap_kb']!))
@@ -113,7 +104,20 @@ String _row(String path) {
   return '| $name | $flutter | ${rows.length - 1} | '
       '${(g.slope / 1024).toStringAsFixed(0)} | ${g.r2.toStringAsFixed(3)} | '
       '$last | $hidden | $explained/$hidden | $memRange | $memTrend | '
+      '$rssRange | $rssTrend | '
       '${_mb(heap.reduce(min))}–${_mb(heap.reduce(max))} |';
+}
+
+/// First → last value and least-squares slope of [column], in MB.
+(String, String) _trend(List<Map<String, String>> rows, String column) {
+  final rs = rows.where((r) => (r[column] ?? '').isNotEmpty).toList();
+  if (rs.isEmpty) return ('not recorded', 'not recorded');
+  final x = rs.map((r) => double.parse(r['round']!)).toList();
+  final y = rs.map((r) => double.parse(r[column]!)).toList();
+  return (
+    '${_mb(y.first)} → ${_mb(y.last)}',
+    (_fit(x, y).slope / 1024).toStringAsFixed(1),
+  );
 }
 
 List<String> _pad(List<String> v, int n) => [

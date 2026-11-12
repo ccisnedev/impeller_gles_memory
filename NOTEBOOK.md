@@ -38,3 +38,9 @@ A production app (Flutter 3.41.8) was profiled on the same Galaxy A04. Over seve
 - **The counter grows ~569 MB per round,** about the same as `images` (590), so decoding new images does not change the rate. All 14 zero readings fall in the predicted band.
 - **`MemAvailable` drifts −3 MB per round** (1684 → 1592 MB). That is inside the run's noise, but it is the first non-flat trend. Per-process RSS is needed to tell whether it is real.
 - **The end-of-run fix works:** the script printed `CSV:` and finished without error.
+
+## 2026-11-12: method change, per-process memory
+
+- `tool/measure.ps1` now records `process_rss_kb`: `TOTAL RSS` from the App Summary of `dumpsys meminfo`. The regex was checked on the device against `com.android.systemui`.
+- **Why:** the `fresh` run showed `MemAvailable` drifting −3 MB per round. Device-wide memory is too noisy to tell whether that is the app, so the app's own resident memory is needed.
+- `tool/analyze.dart` reports its first → last value and its trend. Earlier runs show `not recorded`.

@@ -33,12 +33,12 @@ $ErrorActionPreference = 'Stop'
 $package = 'dev.ccisne.impeller_gles_memory'
 $root = Split-Path $PSScriptRoot -Parent
 $adbPrefix = if ($Device) { @('-s', $Device) } else { @() }
-function Adb { & adb @adbPrefix @args }
+function Invoke-Adb { & adb.exe @adbPrefix @args }
 
 # Device and toolchain info, recorded next to the CSV.
-$model = (Adb shell getprop ro.product.model).Trim()
-$android = (Adb shell getprop ro.build.version.release).Trim()
-$gpu = ((Adb shell dumpsys SurfaceFlinger) | Select-String 'GLES:' | Select-Object -First 1).ToString().Trim()
+$model = (Invoke-Adb shell getprop ro.product.model).Trim()
+$android = (Invoke-Adb shell getprop ro.build.version.release).Trim()
+$gpu = ((Invoke-Adb shell dumpsys SurfaceFlinger) | Select-String 'GLES:' | Select-Object -First 1).ToString().Trim()
 $flutterVersion = (& $Flutter @FlutterArgs --version 2>&1 | Select-Object -First 1).ToString().Trim()
 Write-Host "Device: $model, Android $android"
 Write-Host "GPU: $gpu"
@@ -60,11 +60,11 @@ $runArgs = $FlutterArgs + @('run', '--profile', "--dart-define=SCENARIO=$Scenari
     "--dart-define=ROUNDS=$Rounds", "--dart-define=PAUSE_MS=$PauseMs")
 if ($Renderer -eq 'skia') { $runArgs += '--no-enable-impeller' }
 if ($Device) { $runArgs += @('-d', $Device) }
-Adb logcat -c
+Invoke-Adb logcat -c
 $run = Start-Process $Flutter -ArgumentList $runArgs -WorkingDirectory $root -PassThru -NoNewWindow
 
 function Sample([int]$round) {
-    $m = Adb shell dumpsys meminfo $package
+    $m = Invoke-Adb shell dumpsys meminfo $package
     function Value([string]$label) {
         $line = $m | Select-String -Pattern "^\s*$([regex]::Escape($label))\s*:?\s+(\d+)" | Select-Object -First 1
         if ($line) { $line.Matches[0].Groups[1].Value } else { '' }
@@ -79,7 +79,7 @@ function Sample([int]$round) {
 }
 
 try {
-    Adb logcat -v brief 'flutter:I' '*:S' | ForEach-Object {
+    Invoke-Adb logcat -v brief 'flutter:I' '*:S' | ForEach-Object {
         if ($_ -match 'IMPELLER_REPRO round=(\d+)') { Sample ([int]$Matches[1]) }
         if ($_ -match 'IMPELLER_REPRO end') { throw 'end' }
     }
@@ -87,6 +87,6 @@ try {
     if ($_.Exception.Message -ne 'end') { throw }
 } finally {
     if (-not $run.HasExited) { Stop-Process -Id $run.Id -Force }
-    Adb shell am force-stop $package | Out-Null
+    Invoke-Adb shell am force-stop $package | Out-Null
 }
 Write-Host "CSV: $csv"

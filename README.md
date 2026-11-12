@@ -62,7 +62,7 @@ Findings:
    - Without `Graphics`, the app goes from 159 MB at round 1 to 180 MB at round 30, while the counter claims 17.4 GB.
    - Most of that rise is in the first 8 rounds (warm-up); after that it moves 176 → 180 MB.
 4. **New images do not change the rate.** `fresh` (569 and 595 MB/round) grows like `images` (590). The growth does not come from decoding new images.
-5. **The wraparound explains the zeros.** In 63 of 68 cases, the fitted line puts a zero reading in the 2–4 GiB band. The others are rounds the line places just below the 2 GiB edge, within the fit's error.
+5. **The wraparound explains the zeros.** In 63 of 68 cases, the fitted line puts a zero reading in the 2–4 GiB band. The other 5 are rounds the line places within 71 MB of a band edge, within the fit's error.
 
 ## Limitations
 

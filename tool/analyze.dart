@@ -36,9 +36,9 @@ void main(List<String> args) {
     'hidden explained | MemAvailable first → last (MB) | MemAvailable trend (MB/round) | '
     'process RSS without Graphics, round 1 → last (MB) | '
     'process RSS without Graphics, trend (MB/round) | '
-    'native heap (MB) |',
+    'CmaFree min (MB) | native heap (MB) |',
   );
-  print('|---|---|---|---|---|---|---|---|---|---|---|---|---|');
+  print('|---|---|---|---|---|---|---|---|---|---|---|---|---|---|');
   for (final path in args) {
     print(_row(path));
   }
@@ -104,6 +104,12 @@ String _row(String path) {
         },
   ];
   final (rssRange, rssTrend) = _trend(rss, 'own');
+  final cma = [
+    for (final r in rows)
+      if ((r['device_cma_free_kb'] ?? '').isNotEmpty)
+        double.parse(r['device_cma_free_kb']!),
+  ];
+  final cmaMin = cma.isEmpty ? 'not recorded' : _mb(cma.reduce(min));
   final heap = rows
       .where((r) => int.parse(r['round']!) >= 1)
       .map((r) => double.parse(r['native_heap_kb']!))
@@ -116,7 +122,7 @@ String _row(String path) {
   return '| $name | $flutter | ${rows.length - 1} | '
       '${(g.slope / 1024).toStringAsFixed(0)} | ${g.r2.toStringAsFixed(3)} | '
       '$last | $hidden | $explained/$hidden | $memRange | $memTrend | '
-      '$rssRange | $rssTrend | '
+      '$rssRange | $rssTrend | $cmaMin | '
       '${_mb(heap.reduce(min))}–${_mb(heap.reduce(max))} |';
 }
 

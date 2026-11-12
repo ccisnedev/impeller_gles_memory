@@ -51,7 +51,7 @@ $csv = Join-Path $root "results/$stamp-$Renderer-$Scenario.csv"
     "# device=$model android=$android",
     "# $gpu",
     "# $flutterVersion",
-    'round,time,total_pss_kb,graphics_kb,gl_mtrack_kb,egl_mtrack_kb,native_heap_kb'
+    'round,time,total_pss_kb,graphics_kb,gl_mtrack_kb,egl_mtrack_kb,native_heap_kb,device_mem_available_kb'
 ) | Set-Content $csv
 
 # `--no-enable-impeller` only applies to debug and profile builds, which is
@@ -72,7 +72,10 @@ function Sample([int]$round) {
     $row = @(
         $round, (Get-Date -Format 'HH:mm:ss'),
         (Value 'TOTAL PSS'), (Value 'Graphics'), (Value 'GL mtrack'),
-        (Value 'EGL mtrack'), (Value 'Native Heap')
+        (Value 'EGL mtrack'), (Value 'Native Heap'),
+        # Physical check: the memtrack counters above are reported by the GPU
+        # driver and can wrap or overcount; MemAvailable is what the device has.
+        ((Invoke-Adb shell cat /proc/meminfo | Select-String '^MemAvailable:\s+(\d+)').Matches[0].Groups[1].Value)
     ) -join ','
     Add-Content $csv $row
     Write-Host "round $round -> $row"
@@ -87,6 +90,7 @@ try {
     if ($_.Exception.Message -ne 'end') { throw }
 } finally {
     if (-not $run.HasExited) { Stop-Process -Id $run.Id -Force }
-    Invoke-Adb shell am force-stop $package | Out-Null
+    # `flutter run` may have already dropped the device connection.
+    try { Invoke-Adb shell am force-stop $package 2>$null | Out-Null } catch { }
 }
 Write-Host "CSV: $csv"

@@ -44,3 +44,12 @@ A production app (Flutter 3.41.8) was profiled on the same Galaxy A04. Over seve
 - `tool/measure.ps1` now records `process_rss_kb`: `TOTAL RSS` from the App Summary of `dumpsys meminfo`. The regex was checked on the device against `com.android.systemui`.
 - **Why:** the `fresh` run showed `MemAvailable` drifting −3 MB per round. Device-wide memory is too noisy to tell whether that is the app, so the app's own resident memory is needed.
 - `tool/analyze.dart` reports its first → last value and its trend. Earlier runs show `not recorded`.
+
+## 2026-11-12 10:44: Impeller, `fresh`, with process RSS (commit `09df50a`)
+
+- [Data](results/20261112-104429-impeller-fresh.csv).
+- **The counter grows ~595 MB per round,** the same as the previous `fresh` run (569).
+- **The raw `TOTAL RSS` follows the counter** (1.6 GB at round 30), so it includes the `Graphics` value. `TOTAL RSS − Graphics` is the same whether `Graphics` reads 0 or 1.9 GB, which confirms it.
+- **Without `Graphics`, the app's resident memory is flat:** 159 MB at round 1, 176 MB at round 8, 180 MB at round 30.
+- **`MemAvailable` has no trend this time** (−0.2 MB per round). The −3 MB per round drift of the previous `fresh` run was noise.
+- `tool/analyze.dart` now reports `TOTAL RSS − Graphics` instead of raw RSS.

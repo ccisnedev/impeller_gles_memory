@@ -34,7 +34,8 @@ void main(List<String> args) {
     '| run | flutter | rounds | graphics growth (MB/round) | R² | '
     'graphics at last round (GB, reconstructed) | hidden readings | '
     'hidden explained | MemAvailable first → last (MB) | MemAvailable trend (MB/round) | '
-    'process RSS first → last (MB) | process RSS trend (MB/round) | '
+    'process RSS without Graphics, round 1 → last (MB) | '
+    'process RSS without Graphics, trend (MB/round) | '
     'native heap (MB) |',
   );
   print('|---|---|---|---|---|---|---|---|---|---|---|---|---|');
@@ -91,7 +92,18 @@ String _row(String path) {
       .length;
 
   final (memRange, memTrend) = _trend(rows, 'device_mem_available_kb');
-  final (rssRange, rssTrend) = _trend(rows, 'process_rss_kb');
+  // TOTAL RSS includes the same memtrack Graphics value, so it mirrors the
+  // driver counter. Subtracting it leaves the app's own resident pages.
+  final rss = [
+    for (final r in rows)
+      if (int.parse(r['round']!) >= 1 && (r['process_rss_kb'] ?? '').isNotEmpty)
+        {
+          'round': r['round']!,
+          'own':
+              '${int.parse(r['process_rss_kb']!) - (int.tryParse(r['graphics_kb'] ?? '') ?? 0)}',
+        },
+  ];
+  final (rssRange, rssTrend) = _trend(rss, 'own');
   final heap = rows
       .where((r) => int.parse(r['round']!) >= 1)
       .map((r) => double.parse(r['native_heap_kb']!))

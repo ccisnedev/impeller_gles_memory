@@ -2,7 +2,7 @@
 
 An experiment on graphics memory under **Impeller on OpenGL ES** on a PowerVR GPU (Samsung Galaxy A04, PowerVR Rogue GE8320), compared with Skia. Everything needed to check it is here: the app, the measuring script, the raw data, the analysis and a lab notebook.
 
-**Status (2026-11-12):** on this device, the driver's `Graphics` / `GL mtrack` counter grows linearly with both renderers, 4–6× faster with Impeller. The device's free memory does not follow it. So far the counter growth does not show a real leak. See [Results](#results).
+**Status (2026-11-12):** on this device, the driver's `Graphics` / `GL mtrack` counter grows linearly with both renderers, 4–6× faster with Impeller, up to 17 GB on a 3.7 GB phone. The app's own resident memory stays at ~180 MB and the device's free memory does not move. The counter growth is not a real leak. See [Results](#results).
 
 ## Question
 
@@ -46,20 +46,23 @@ Scenarios (`--dart-define=SCENARIO=...`):
 
 Output of `dart run tool/analyze.dart results/*.csv`, 30 rounds each:
 
-| Run | Renderer, scenario | Growth of `Graphics` (MB/round) | R² | Value at round 30 (reconstructed) | Zeros explained by the wrap | `MemAvailable`, round 0 → 30 (MB) | `MemAvailable` trend (MB/round) | Native heap (MB) |
-|---|---|---|---|---|---|---|---|---|
-| [20261111-225455](results/20261111-225455-impeller-images.csv) | Impeller, `images` | 397 | 0.994 | 12.6 GB | 14/15 | not recorded | — | 29–39 |
-| [20261111-232906](results/20261111-232906-skia-images.csv) | Skia, `images` | 91 | 0.998 | ~2.8 GB (reads 0) | 9/10 | 1658 → 1593 | +0.7 | 33–51 |
-| [20261112-081612](results/20261112-081612-impeller-images.csv) | Impeller, `images` | 590 | 1.000 | 17.5 GB | 12/14 | 1745 → 1637 | −0.8 | 26–39 |
-| [20261112-090653](results/20261112-090653-impeller-fresh.csv) | Impeller, `fresh` | 569 | 1.000 | 16.6 GB | 14/14 | 1684 → 1592 | −3.0 | 27–42 |
+| Run | Renderer, scenario | Growth of `Graphics` (MB/round) | R² | Value at round 30 (reconstructed) | Zeros explained by the wrap | `MemAvailable`, round 0 → 30 (MB) | `MemAvailable` trend (MB/round) | App RSS without `Graphics`, round 1 → 30 (MB) | Native heap (MB) |
+|---|---|---|---|---|---|---|---|---|---|
+| [20261111-225455](results/20261111-225455-impeller-images.csv) | Impeller, `images` | 397 | 0.994 | 12.6 GB | 14/15 | not recorded | — | not recorded | 29–39 |
+| [20261111-232906](results/20261111-232906-skia-images.csv) | Skia, `images` | 91 | 0.998 | ~2.8 GB (reads 0) | 9/10 | 1658 → 1593 | +0.7 | not recorded | 33–51 |
+| [20261112-081612](results/20261112-081612-impeller-images.csv) | Impeller, `images` | 590 | 1.000 | 17.5 GB | 12/14 | 1745 → 1637 | −0.8 | not recorded | 26–39 |
+| [20261112-090653](results/20261112-090653-impeller-fresh.csv) | Impeller, `fresh` | 569 | 1.000 | 16.6 GB | 14/14 | 1684 → 1592 | −3.0 | not recorded | 27–42 |
+| [20261112-104429](results/20261112-104429-impeller-fresh.csv) | Impeller, `fresh` | 595 | 1.000 | 17.4 GB | 14/15 | 1731 → 1585 | −0.2 | 159 → 180 (+0.4/round) | 25–32 |
 
 Findings:
 1. **Both renderers grow the counter linearly** (R² ≥ 0.99). Impeller grows it 4–6× faster than Skia.
 2. **The counter goes far past physical RAM:** 17.5 GB on a 3.7 GB phone, and the app was never killed. Whatever the counter tracks is not resident memory.
-   - In `images`, `MemAvailable` has no trend (under 1 MB per round).
-   - In `fresh` it drifts −3 MB per round (~90 MB over the run). That is inside the run's noise, and 0.5 % of what the counter claims. It needs a per-process check.
-3. **New images do not change the rate.** `fresh` (569 MB/round) grows like `images` (590). The growth does not come from decoding new images.
-4. **The wraparound explains the zeros.** In 49 of 53 cases, the fitted line puts a zero reading in the 2–4 GiB band. The other 4 are rounds the line places 21–71 MB below the 2 GiB edge, which is within the fit's error.
+   - `MemAvailable` has no trend beyond its noise (−3 to +0.7 MB per round).
+3. **The app's own resident memory is flat.** `TOTAL RSS` in `dumpsys meminfo` includes the same `Graphics` value. Proof: `TOTAL RSS − Graphics` is the same whether `Graphics` reads 0 or 1.9 GB (round 24: 178 MB; round 25: 179 MB).
+   - Without `Graphics`, the app goes from 159 MB at round 1 to 180 MB at round 30, while the counter claims 17.4 GB.
+   - Most of that rise is in the first 8 rounds (warm-up); after that it moves 176 → 180 MB.
+4. **New images do not change the rate.** `fresh` (569 and 595 MB/round) grows like `images` (590). The growth does not come from decoding new images.
+5. **The wraparound explains the zeros.** In 63 of 68 cases, the fitted line puts a zero reading in the 2–4 GiB band. The others are rounds the line places just below the 2 GiB edge, within the fit's error.
 
 ## Limitations
 
@@ -96,7 +99,8 @@ To try another Flutter SDK, pass `-Flutter C:\path\to\flutter\bin\flutter.bat`.
 - [ ] Repeat the `images` scenario to measure run-to-run variance (397 vs 590 MB/round so far).
 - [ ] Repeat on Flutter 3.50.0.
 - [ ] Run a Vulkan device as a control.
-- [ ] Measure per-process resident memory (`TOTAL RSS`, recorded since the column was added) on Impeller and Skia.
+- [x] Measure the app's resident memory (Impeller, `fresh`): flat.
+- [ ] Same check on Skia, as a control.
 - [ ] Check `dumpsys gpu` as a second view of GPU memory.
 - [ ] Post upstream ([draft](report/issue-draft.md)).
 

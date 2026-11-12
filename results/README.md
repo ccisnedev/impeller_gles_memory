@@ -21,4 +21,4 @@ Each run writes one CSV here. The files are kept exactly as `tool/measure.ps1` w
 | `egl_mtrack_kb` | `dumpsys meminfo`, `EGL mtrack` | |
 | `native_heap_kb` | `dumpsys meminfo`, `Native Heap` | |
 | `device_mem_available_kb` | `/proc/meminfo`, `MemAvailable` | Device-wide physical check. Added in commit `625a5ad`, so older runs lack it. |
-| `process_rss_kb` | `dumpsys meminfo`, `TOTAL RSS` in the App Summary | The app's resident memory. Added after commit `138683d`, so older runs lack it. |
+| `process_rss_kb` | `dumpsys meminfo`, `TOTAL RSS` in the App Summary | Added in commit `09df50a`, so older runs lack it. **It includes the `Graphics` value:** `process_rss_kb − graphics_kb` is the app's own resident memory. |

@@ -95,9 +95,16 @@ function Sample([int]$round) {
 # so the normal end is recognized by a flag, not by the message.
 $script:finished = $false
 try {
-    Invoke-Adb logcat -v brief 'flutter:I' '*:S' | ForEach-Object {
+    Invoke-Adb logcat -v brief 'flutter:I' 'ActivityManager:I' '*:S' | ForEach-Object {
         if ($_ -match 'IMPELLER_REPRO round=(\d+)') { Sample ([int]$Matches[1]) }
         if ($_ -match 'IMPELLER_REPRO end') { $script:finished = $true; throw 'end' }
+        # The app was killed (low memory, or another app took the device):
+        # stop instead of waiting forever, and say so in the CSV.
+        if ($_ -match "$([regex]::Escape($package)).*has died") {
+            Add-Content $csv "# app process died after the last row: $_"
+            Write-Host "App process died: $_"
+            $script:finished = $true; throw 'end'
+        }
     }
 } catch {
     if (-not $script:finished) { throw }
@@ -105,5 +112,8 @@ try {
     if (-not $run.HasExited) { Stop-Process -Id $run.Id -Force }
     # `flutter run` may have already dropped the device connection.
     try { Invoke-Adb shell am force-stop $package 2>$null | Out-Null } catch { }
+    # Leaving the pipeline does not end the native `adb logcat` it started.
+    Get-CimInstance Win32_Process -Filter "ParentProcessId = $PID AND Name = 'adb.exe'" |
+        ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 }
 Write-Host "CSV: $csv"

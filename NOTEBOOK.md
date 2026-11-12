@@ -53,3 +53,42 @@ A production app (Flutter 3.41.8) was profiled on the same Galaxy A04. Over seve
 - **Without `Graphics`, the app's resident memory is flat:** 159 MB at round 1, 176 MB at round 8, 180 MB at round 30.
 - **`MemAvailable` has no trend this time** (−0.2 MB per round). The −3 MB per round drift of the previous `fresh` run was noise.
 - `tool/analyze.dart` now reports `TOTAL RSS − Graphics` instead of raw RSS.
+
+## 2026-11-12 13:00: move to Flutter 3.50.0 (commit `32f5810`)
+
+- Installed 3.50.0 in a separate folder; 3.41.8 stays on `PATH`.
+- **The project did not build:** 3.50.0 requires Gradle ≥ 9.3.1. The Android build files were replaced with those of a 3.50.0 `flutter create` template (Gradle 9.5, AGP 9.3.1, Kotlin 2.4.20).
+- **New column:** `CmaFree`, after flutter/flutter#178264 showed a CMA pool running out on Xclipse while `MemAvailable` stayed flat.
+- **The runs are unattended,** one after another. `adb` checks the device's stay-awake setting, which was already on.
+
+## 2026-11-12 13:06–16:08: seven runs on 3.50.0
+
+All the data is in the README's [3.50.0 table](README.md#flutter-3500).
+
+**Impeller, `images`, `fresh` and `no_images`:**
+- **The counter grows 13.7–14.7 MB per second** in all three, so it depends on rendering time, not on content.
+- **Real memory is flat.**
+
+**Skia, `images` and `fresh`:**
+- **1.6–1.9 MB/s.** The run printed Flutter's "Impeller opt-out deprecated" notice, which confirms the renderer.
+
+**Impeller, `stack`:**
+- **`MemAvailable` fell from 1754 to 164 MB.** Android then swapped the app out: the RSS without `Graphics` dropped from ~230 to 33 MB, and the native heap from ~100 to 10 MB.
+- **The app survived all 30 rounds.**
+- **Skia was added as a control,** to tell whether the drop is specific to Impeller.
+
+**Skia, `stack`:**
+- **`MemAvailable` fell the same way** (1896 → 220 MB), so the drop comes from the screens piling up, not from the renderer.
+- **Interrupted after round 28.** At 16:08:51 someone launched another app (`com.example.face_gesture_detector_example`) on the device, and the test app's process was killed.
+  - The script kept waiting for the end marker, so it was stopped by hand, along with `adb logcat` readers left over from earlier runs.
+  - A note was appended to that CSV.
+- **The run was not repeated:** the device was in use, and 28 rounds are enough for the comparison.
+
+**`CmaFree`:**
+- **It was almost empty before every run** (0–23 MB of 336 MB) and reaches 0 with both renderers, so it is not a signal on this phone.
+
+## 2026-11-12: script hardening
+
+`tool/measure.ps1`:
+- **It watches `ActivityManager` for the app's death,** writes it into the CSV and stops, instead of waiting forever.
+- **It kills its own `adb logcat` child** on exit.

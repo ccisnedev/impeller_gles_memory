@@ -38,27 +38,32 @@ A production app showed `Graphics` memory growing with Impeller and not with Ski
    - **It tests the wraparound assumption:** every reading of 0 must fall where the fitted line predicts the 2–4 GiB band.
 
 Scenarios (`--dart-define=SCENARIO=...`):
-- `images` is the default, with the same images every round. It is the only one measured so far.
-- `fresh`, `no_images` and `stack` isolate image allocation, images versus layers, and screens that are never popped.
+- `images` is the default, with the same images every round.
+- `fresh` decodes new images every round.
+- `no_images` (flat colors instead of images) and `stack` (screens are never popped) are not measured yet.
 
 ## Results
 
-Output of `dart run tool/analyze.dart results/*.csv`, `images` scenario, 30 rounds each:
+Output of `dart run tool/analyze.dart results/*.csv`, 30 rounds each:
 
-| Run | Renderer | Growth of `Graphics` (MB/round) | R² | Value at round 30 (reconstructed) | Zeros explained by the wrap | `MemAvailable`, round 0 → 30 (MB) | `MemAvailable` trend (MB/round) | Native heap (MB) |
+| Run | Renderer, scenario | Growth of `Graphics` (MB/round) | R² | Value at round 30 (reconstructed) | Zeros explained by the wrap | `MemAvailable`, round 0 → 30 (MB) | `MemAvailable` trend (MB/round) | Native heap (MB) |
 |---|---|---|---|---|---|---|---|---|
-| [20261111-225455](results/20261111-225455-impeller-images.csv) | Impeller | 397 | 0.994 | 12.6 GB | 14/15 | not recorded | — | 29–39 |
-| [20261111-232906](results/20261111-232906-skia-images.csv) | Skia | 91 | 0.998 | ~2.8 GB (reads 0) | 9/10 | 1658 → 1593 | +0.7 | 33–51 |
-| [20261112-081612](results/20261112-081612-impeller-images.csv) | Impeller | 590 | 1.000 | 17.5 GB | 12/14 | 1745 → 1637 | −0.8 | 26–39 |
+| [20261111-225455](results/20261111-225455-impeller-images.csv) | Impeller, `images` | 397 | 0.994 | 12.6 GB | 14/15 | not recorded | — | 29–39 |
+| [20261111-232906](results/20261111-232906-skia-images.csv) | Skia, `images` | 91 | 0.998 | ~2.8 GB (reads 0) | 9/10 | 1658 → 1593 | +0.7 | 33–51 |
+| [20261112-081612](results/20261112-081612-impeller-images.csv) | Impeller, `images` | 590 | 1.000 | 17.5 GB | 12/14 | 1745 → 1637 | −0.8 | 26–39 |
+| [20261112-090653](results/20261112-090653-impeller-fresh.csv) | Impeller, `fresh` | 569 | 1.000 | 16.6 GB | 14/14 | 1684 → 1592 | −3.0 | 27–42 |
 
 Findings:
 1. **Both renderers grow the counter linearly** (R² ≥ 0.99). Impeller grows it 4–6× faster than Skia.
-2. **The counter goes far past physical RAM:** 17.5 GB on a 3.7 GB phone. `MemAvailable` has no trend (under 1 MB per round), and the app was never killed. Whatever the counter tracks is not resident memory.
-3. **The wraparound explains the zeros.** In 35 of 39 cases, the fitted line puts a zero reading in the 2–4 GiB band. The other 4 are rounds the line places 21–71 MB below the 2 GiB edge, which is within the fit's error.
+2. **The counter goes far past physical RAM:** 17.5 GB on a 3.7 GB phone, and the app was never killed. Whatever the counter tracks is not resident memory.
+   - In `images`, `MemAvailable` has no trend (under 1 MB per round).
+   - In `fresh` it drifts −3 MB per round (~90 MB over the run). That is inside the run's noise, and 0.5 % of what the counter claims. It needs a per-process check.
+3. **New images do not change the rate.** `fresh` (569 MB/round) grows like `images` (590). The growth does not come from decoding new images.
+4. **The wraparound explains the zeros.** In 49 of 53 cases, the fitted line puts a zero reading in the 2–4 GiB band. The other 4 are rounds the line places 21–71 MB below the 2 GiB edge, which is within the fit's error.
 
 ## Limitations
 
-- **One device, one driver, one Flutter version, one scenario.** No Vulkan device has been measured as a control.
+- **One device, one driver, one Flutter version, two scenarios.** No Vulkan device has been measured as a control.
 - **The two Impeller runs differ** (397 vs 590 MB/round). Run-to-run variance is not characterized yet.
 - **Free memory was not recorded in the first Impeller run:** that column was added after it.
 - **`MemAvailable` is device-wide and noisy:** it swings about 150–190 MB within a run.
@@ -86,8 +91,9 @@ To try another Flutter SDK, pass `-Flutter C:\path\to\flutter\bin\flutter.bat`.
 
 ## Next steps
 
-- [ ] Run the `fresh`, `no_images` and `stack` scenarios.
-- [ ] Repeat the `images` scenario to measure run-to-run variance.
+- [x] Run the `fresh` scenario.
+- [ ] Run the `no_images` and `stack` scenarios.
+- [ ] Repeat the `images` scenario to measure run-to-run variance (397 vs 590 MB/round so far).
 - [ ] Repeat on Flutter 3.50.0.
 - [ ] Run a Vulkan device as a control.
 - [ ] Check per-process resident memory (`/proc/<pid>/status` VmRSS) and `dumpsys gpu`, not only device-wide `MemAvailable`.

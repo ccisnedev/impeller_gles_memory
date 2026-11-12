@@ -31,3 +31,10 @@ A production app (Flutter 3.41.8) was profiled on the same Galaxy A04. Over seve
 
 - Added [`tool/analyze.dart`](tool/analyze.dart). It rebuilds the counter's cumulative value, fits a line, and checks that every zero reading falls inside the predicted 2–4 GiB band.
 - **Conclusion so far:** H2 (the counter is driver accounting) is supported, and H1 (a real leak) is not. The result is in the [README](README.md#results).
+
+## 2026-11-12 09:06: Impeller, `fresh` (commit `0c0c040`)
+
+- [Data](results/20261112-090653-impeller-fresh.csv). New images every round.
+- **The counter grows ~569 MB per round,** about the same as `images` (590), so decoding new images does not change the rate. All 14 zero readings fall in the predicted band.
+- **`MemAvailable` drifts −3 MB per round** (1684 → 1592 MB). That is inside the run's noise, but it is the first non-flat trend. Per-process RSS is needed to tell whether it is real.
+- **The end-of-run fix works:** the script printed `CSV:` and finished without error.

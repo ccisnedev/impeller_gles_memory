@@ -7,7 +7,7 @@
 **Before posting:**
 - [ ] Repeat on the latest stable (3.50.0).
 - [ ] Add per-process RSS, so the free-memory check is not only device-wide.
-- [ ] Run at least one more scenario (`fresh` or `no_images`).
+- [x] Run at least one more scenario (`fresh`: same rate as `images`).
 - [ ] Update the numbers below from `tool/analyze.dart`.
 
 ---
@@ -24,13 +24,13 @@ Another data point, on a PowerVR GPU running GLES. It suggests that the `Graphic
 
 | | Impeller | Skia |
 |---|---|---|
-| `Graphics` growth | 397–590 MB/round, linear (R² ≥ 0.99) | 91 MB/round, linear |
+| `Graphics` growth | 397–590 MB/round, linear (R² ≥ 0.99); the same with new images every round (569) | 91 MB/round, linear |
 | `Graphics` after 30 rounds (reconstructed) | 12.6–17.5 GB | ~2.8 GB |
-| Device `MemAvailable` | flat (1745 → 1637 MB) | flat (1658 → 1593 MB) |
+| Device `MemAvailable` | no trend beyond noise (1745 → 1637 MB; −3 MB/round with new images) | flat (1658 → 1593 MB) |
 | Native heap | 26–39 MB | 33–51 MB |
 | App killed | no | no |
 
-- **The counter wraps around.** It reads 0 once the value passes 2 GiB, the `GL mtrack` line disappears, and it starts over after 4 GiB, like a signed 32-bit byte count. Fitting a line to the reconstructed value puts 35 of 39 zero readings inside the 2–4 GiB band. The other 4 fall within 71 MB of the band's edge.
+- **The counter wraps around.** It reads 0 once the value passes 2 GiB, the `GL mtrack` line disappears, and it starts over after 4 GiB, like a signed 32-bit byte count. Fitting a line to the reconstructed value puts 49 of 53 zero readings inside the 2–4 GiB band. The other 4 fall within 71 MB of the band's edge.
 - **The counter is not resident memory.** It reaches 17.5 GB on a phone with 3.7 GB of RAM, while free memory stays flat.
 
 **So, on this driver:**
